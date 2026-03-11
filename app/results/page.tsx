@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -144,7 +144,9 @@ export default function ResultsPage() {
   const [readmeHtml, setReadmeHtml] = useState('');
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [diagramError, setDiagramError] = useState(false);
+  const [diagramRendered, setDiagramRendered] = useState(false);
   const diagramRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<AnalysisResult | null>(null);
 
   // ── Load result from sessionStorage ──────────────────────────────
   useEffect(() => {
@@ -175,14 +177,21 @@ export default function ResultsPage() {
   }, [result?.readme]);
 
   // ── Render Mermaid diagram ────────────────────────────────────────
-  useEffect(() => {
-    if (!result || activeTab !== 'architecture') return;
-    setDiagramError(false);
+  // Keep resultRef in sync so the callback ref can always see current result
+  useEffect(() => { resultRef.current = result; }, [result]);
 
-    // ✅ FIX: cleanMermaid now handles null — no more TypeError crash
-    //   advancedDiagram ?? simpleDiagram ensures we always have a string
-    //   (the route also now guarantees advancedDiagram falls back to simpleDiagram)
-    const diagram = cleanMermaid(result.advancedDiagram ?? result.simpleDiagram);
+  // renderDiagram: called both when result loads AND when the DOM node mounts.
+  // Using a stable function reference avoids double-render races.
+  const renderDiagram = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const res = resultRef.current;
+    if (!res) return;
+
+    setDiagramError(false);
+    setDiagramRendered(false);
+    node.innerHTML = '<p style="color:#666;font-size:13px">Rendering diagram…</p>';
+
+    const diagram = cleanMermaid(res.advancedDiagram ?? res.simpleDiagram);
 
     import('mermaid').then(({ default: mermaid }) => {
       mermaid.initialize({
@@ -197,31 +206,39 @@ export default function ResultsPage() {
         },
       });
 
-      if (!diagramRef.current) return;
-      diagramRef.current.innerHTML = '';
-
       const renderId = `mermaid-${Date.now()}`;
-
       mermaid.render(renderId, diagram)
         .then(({ svg }) => {
-          if (diagramRef.current) diagramRef.current.innerHTML = svg;
+          node.innerHTML = svg;
+          setDiagramRendered(true);
         })
         .catch(() => {
-          // Try the simple fallback diagram
           const fallbackId = `mermaid-fb-${Date.now()}`;
-          const fallback = cleanMermaid(result.simpleDiagram);
-          mermaid.render(fallbackId, fallback)
-            .then(({ svg }) => {
-              if (diagramRef.current) diagramRef.current.innerHTML = svg;
-            })
-            .catch(() => {
-              setDiagramError(true);
-            });
+          mermaid.render(fallbackId, cleanMermaid(res.simpleDiagram))
+            .then(({ svg }) => { node.innerHTML = svg; setDiagramRendered(true); })
+            .catch(() => { setDiagramError(true); setDiagramRendered(true); });
         });
-    }).catch(() => {
-      setDiagramError(true);
-    });
-  }, [result, activeTab]);
+    }).catch(() => { setDiagramError(true); setDiagramRendered(true); });
+  }, []); // stable — reads result via resultRef
+
+  // Callback ref: fires every time the architecture tab div mounts in the DOM
+  // This bypasses AnimatePresence timing — no more null ref on first render
+  const diagramCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    (diagramRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    if (node && resultRef.current) renderDiagram(node);
+  }, [renderDiagram]);
+
+  // Also re-render when result first loads while the tab is already visible
+  useEffect(() => {
+    if (result && activeTab === 'architecture' && diagramRef.current && !diagramRendered) {
+      renderDiagram(diagramRef.current);
+    }
+  }, [result, activeTab, diagramRendered, renderDiagram]);
+
+  // Reset rendered flag when switching away and back to the architecture tab
+  useEffect(() => {
+    if (activeTab !== 'architecture') setDiagramRendered(false);
+  }, [activeTab]);
 
   // ── Push to GitHub ────────────────────────────────────────────────
   const handlePush = async () => {
@@ -434,9 +451,8 @@ export default function ResultsPage() {
                       </pre>
                     </div>
                   ) : (
-                    <div ref={diagramRef} className="diagram-wrap"
+                    <div ref={diagramCallbackRef} className="diagram-wrap"
                       style={{ padding: 32, borderRadius: 14, minHeight: 300, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <p style={{ color: '#666', fontSize: 13 }}>Rendering diagram…</p>
                     </div>
                   )}
 

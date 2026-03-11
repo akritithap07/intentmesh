@@ -88,49 +88,126 @@ function LogoMark({ size = 28 }: { size?: number }) {
 }
 
 // ── Voice Input ───────────────────────────────────────────────────
+// Uses Chrome Web Speech API.
+// Strategy:
+//   - interimResults: true  → user sees words appearing live
+//   - We track the "base" text (what existed before recording started)
+//   - Final results are appended to a finalRef buffer
+//   - Interim results are shown as a live preview on top of that
+//   - When user clicks Stop: we write base + finalBuffer + any remaining interim → field
+//   - Chrome auto-stops after silence: we restart transparently so recording never cuts out
 function MicButton({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [listening, setListening] = useState(false);
-  const recogRef = useRef<any>(null);
+  const [error, setError]         = useState('');
 
-  const stopListening = useCallback(() => {
-    try { recogRef.current?.stop(); } catch {}
-    recogRef.current = null;
-    setListening(false);
+  // These refs let us read/write across restarts without stale closures
+  const recRef          = useRef<any>(null);
+  const baseTextRef     = useRef('');    // text in the field BEFORE recording started
+  const finalBufferRef  = useRef('');    // confirmed final speech so far this session
+  const shouldRunRef    = useRef(false); // false = user clicked stop, don't restart
+
+  const buildText = (interim: string) => {
+    const base  = baseTextRef.current;
+    const final = finalBufferRef.current;
+    const spoken = (final + (interim ? ' ' + interim : '')).trim();
+    return base ? base.trimEnd() + (spoken ? ' ' + spoken : '') : spoken;
+  };
+
+  const startSession = useCallback(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+
+    const rec = new SR();
+    rec.lang            = 'en-US';
+    rec.continuous      = true;
+    rec.interimResults  = true; // show live preview as user speaks
+
+    rec.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          // Append confirmed speech to the buffer with a space
+          finalBufferRef.current = (finalBufferRef.current + ' ' + t).trim();
+        } else {
+          interim += t;
+        }
+      }
+      // Update the field live so the user sees text appearing
+      onChange(buildText(interim));
+    };
+
+    rec.onerror = (e: any) => {
+      if (e.error === 'no-speech') return; // harmless, onend will restart
+      if (e.error === 'aborted')  return;  // we called .stop() ourselves
+      setError('Mic error: ' + e.error);
+      shouldRunRef.current = false;
+      setListening(false);
+    };
+
+    rec.onend = () => {
+      recRef.current = null;
+      if (!shouldRunRef.current) {
+        // User stopped — commit exactly what's in the field already (no extra change needed)
+        return;
+      }
+      // Chrome cut us off due to silence — restart transparently
+      startSession();
+    };
+
+    try {
+      rec.start();
+      recRef.current = rec;
+    } catch {
+      // already started or some other error — ignore, onend will handle
+    }
+  }, [onChange]); // onChange is stable (parent uses useCallback or inline, doesn't matter — we just need ref safety)
+
+  const handleClick = useCallback(() => {
+    setError('');
+
+    if (listening) {
+      // ── STOP ──
+      shouldRunRef.current = false;
+      try { recRef.current?.stop(); } catch {}
+      recRef.current = null;
+      setListening(false);
+      // Field already has the correct text from the last onresult — nothing more to do
+    } else {
+      // ── START ──
+      if (!(window as any).SpeechRecognition && !(window as any).webkitSpeechRecognition) {
+        setError('Use Chrome or Edge for voice input.');
+        return;
+      }
+      baseTextRef.current   = value;   // snapshot current field content
+      finalBufferRef.current = '';      // clear buffer for new session
+      shouldRunRef.current  = true;
+      setListening(true);
+      startSession();
+    }
+  }, [listening, value, startSession]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    shouldRunRef.current = false;
+    try { recRef.current?.stop(); } catch {}
   }, []);
 
-  const startListening = useCallback(() => {
-    const SR = typeof window !== 'undefined'
-      ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
-      : null;
-    if (!SR) { alert('Voice input requires Chrome or Edge.'); return; }
-    const rec = new SR();
-    rec.lang = 'en-US';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => {
-      const text = Array.from(e.results as SpeechRecognitionResultList)
-        .slice(e.resultIndex)
-        .map((r: SpeechRecognitionResult) => r[0].transcript)
-        .join(' ');
-      onChange(value ? value.trimEnd() + ' ' + text.trim() : text.trim());
-    };
-    rec.onerror = () => stopListening();
-    rec.onend   = () => { if (recogRef.current) stopListening(); };
-    recogRef.current = rec;
-    try { rec.start(); setListening(true); } catch { stopListening(); }
-  }, [value, onChange, stopListening]);
-
-  useEffect(() => () => { try { recogRef.current?.stop(); } catch {} }, []);
-
   return (
-    <button type="button" onClick={listening ? stopListening : startListening}
-      title={listening ? 'Stop recording' : 'Voice input'}
-      style={{ position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: '50%', background: listening ? 'rgba(255,45,120,0.25)' : 'rgba(255,255,255,0.07)', border: `1.5px solid ${listening ? '#ff2d78' : 'rgba(255,255,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s', flexShrink: 0, zIndex: 2, boxShadow: listening ? '0 0 14px rgba(255,45,120,0.5)' : 'none', animation: listening ? 'micPulse 1.5s ease-in-out infinite' : 'none' }}>
-      {listening
-        ? <svg width="10" height="10" viewBox="0 0 10 10" fill="#ff2d78"><rect width="10" height="10" rx="2"/></svg>
-        : <svg width="13" height="16" viewBox="0 0 13 16" fill="none"><rect x="3.5" y="0.5" width="6" height="9" rx="3" fill="#888"/><path d="M1 8C1 11.314 3.686 14 7 14s6-2.686 6-6" stroke="#888" strokeWidth="1.5" strokeLinecap="round" fill="none"/><line x1="6.5" y1="14" x2="6.5" y2="16" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><line x1="4" y1="16" x2="9" y2="16" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/></svg>
-      }
-    </button>
+    <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, zIndex: 2 }}>
+      <button
+        type="button"
+        onClick={handleClick}
+        title={listening ? 'Stop recording' : 'Voice input'}
+        style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s', background: listening ? 'rgba(255,45,120,0.25)' : 'rgba(255,255,255,0.07)', border: `1.5px solid ${listening ? '#ff2d78' : 'rgba(255,255,255,0.15)'}`, boxShadow: listening ? '0 0 14px rgba(255,45,120,0.5)' : 'none', animation: listening ? 'micPulse 1.5s ease-in-out infinite' : 'none' }}>
+        {listening
+          ? <svg width="10" height="10" viewBox="0 0 10 10" fill="#ff2d78"><rect width="10" height="10" rx="2"/></svg>
+          : <svg width="13" height="16" viewBox="0 0 13 16" fill="none"><rect x="3.5" y="0.5" width="6" height="9" rx="3" fill="#888"/><path d="M1 8C1 11.314 3.686 14 7 14s6-2.686 6-6" stroke="#888" strokeWidth="1.5" strokeLinecap="round" fill="none"/><line x1="6.5" y1="14" x2="6.5" y2="16" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><line x1="4" y1="16" x2="9" y2="16" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        }
+      </button>
+      {listening && <span style={{ fontSize: 9, fontWeight: 700, color: '#ff2d78', letterSpacing: 0.5 }}>● REC</span>}
+      {error    && <span style={{ fontSize: 10, color: '#ff8080', fontWeight: 600, maxWidth: 130, textAlign: 'right', lineHeight: 1.3 }}>{error}</span>}
+    </div>
   );
 }
 
