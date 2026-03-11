@@ -66,13 +66,15 @@ function LogoMark({ size = 28 }: { size?: number }) {
   );
 }
 
-type Tab = 'architecture' | 'readme' | 'contributors' | 'email';
+type Tab = 'architecture' | 'readme' | 'contributors' | 'email' | 'push';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'architecture', label: 'Architecture',     icon: '❋' },
   { id: 'readme',       label: 'README',            icon: '◎' },
   { id: 'contributors', label: 'Find Contributors', icon: '◉' },
   { id: 'email',        label: 'Email Drafts',      icon: '⊕' },
+  { id: 'push',         label: 'Push to Repo',      icon: '↑' },
 ];
+const TAB_ORDER: Tab[] = ['architecture', 'readme', 'contributors', 'email', 'push'];
 
 // ── Clean Mermaid ─────────────────────────────────────────────────
 function cleanMermaid(raw: string | null | undefined): string {
@@ -140,7 +142,7 @@ export default function ResultsPage() {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('architecture');
-  const [showPushModal, setShowPushModal] = useState(false);
+  const [showPushModal, setShowPushModal] = useState(false); // kept for compatibility, unused
   const [pushChoice, setPushChoice] = useState<'replace' | 'new' | null>(null);
   const [pushing, setPushing] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
@@ -360,13 +362,7 @@ export default function ResultsPage() {
           </a>
           <span style={{ padding: '4px 12px', borderRadius: 100, fontSize: 13, fontWeight: 700, background: 'rgba(255,45,120,0.1)', border: '1px solid rgba(255,45,120,0.25)', color: '#ff2d78' }}>{result.repoFullName}</span>
           <div style={{ display: 'flex', gap: 10 }}>
-            <motion.button onClick={() => router.push('/analyze')} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} style={{ padding: '8px 18px', borderRadius: 100, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: '#ddd', border: '1px solid rgba(255,255,255,0.12)' }}>← New Analysis</motion.button>
-            <motion.button onClick={() => setShowPushModal(true)} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
-              style={{ padding: '8px 18px', borderRadius: 100, fontSize: 13, fontWeight: 700, background: '#fff', color: '#000', border: '2px solid transparent', transition: 'all .25s' }}
-              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background='#000'; el.style.color='#fff'; el.style.borderColor='#ff2d78'; }}
-              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background='#fff'; el.style.color='#000'; el.style.borderColor='transparent'; }}>
-              Push to Repo ↑
-            </motion.button>
+            <motion.button onClick={() => router.push('/analyze')} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} style={{ padding: '8px 18px', borderRadius: 100, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: '#ddd', border: '1px solid rgba(255,255,255,0.12)' }}>← Back</motion.button>
           </div>
         </div>
       </motion.div>
@@ -438,239 +434,270 @@ export default function ResultsPage() {
           {/* TABS */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
             style={{ display: 'flex', gap: 4, marginBottom: 16, padding: '6px', borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', width: 'fit-content' }}>
-            {TABS.map(tab => (
-              <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-                <span>{tab.icon}</span>{tab.label}
-              </button>
-            ))}
+            {TABS.map(tab => {
+              const isPushLocked = tab.id === 'push' && (!result.readme || !result.advancedDiagram);
+              return (
+                <button key={tab.id}
+                  className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => !isPushLocked && setActiveTab(tab.id)}
+                  disabled={isPushLocked}
+                  title={isPushLocked ? 'Available after README and diagram are generated' : undefined}
+                  style={isPushLocked ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}>
+                  <span>{tab.icon}</span>{tab.label}
+                  {isPushLocked && <span style={{ fontSize: 10, marginLeft: 2 }}>🔒</span>}
+                </button>
+              );
+            })}
           </motion.div>
 
-          {/* TAB CONTENT */}
-          <AnimatePresence mode="wait">
-            <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
-              style={{ borderRadius: 20, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}>
+          {/* TAB CONTENT — all tabs stay mounted to preserve scroll/state */}
+          <div style={{ borderRadius: 20, overflow: 'hidden', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}>
 
               {/* ARCHITECTURE TAB */}
-              {activeTab === 'architecture' && (
-                <div style={{ padding: 32 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                    <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Architecture Diagram</h2>
+              <div style={{ display: activeTab === 'architecture' ? 'block' : 'none', padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Architecture Diagram</h2>
+                  <div style={{ display: 'flex', gap: 8 }}>
                     <CopyBtn text={cleanMermaid(result.advancedDiagram ?? result.simpleDiagram)} label="Copy Mermaid" />
-                  </div>
-
-                  {/* ✅ FIX: diagramError state prevents blank-div confusion */}
-                  {diagramError ? (
-                    <div style={{ padding: 32, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
-                      <p style={{ color: '#888', fontSize: 13, marginBottom: 12 }}>⚠ Diagram could not render. Copy the Mermaid syntax and paste it into <a href="https://mermaid.live" target="_blank" rel="noreferrer" style={{ color: '#ff2d78' }}>mermaid.live</a> to view it.</p>
-                      <pre style={{ textAlign: 'left', fontSize: 12, color: '#666', background: '#0d0d0d', padding: 16, borderRadius: 8, overflowX: 'auto' }}>
-                        {cleanMermaid(result.advancedDiagram ?? result.simpleDiagram)}
-                      </pre>
-                    </div>
-                  ) : (
-                    <div ref={diagramCallbackRef} className="diagram-wrap"
-                      style={{ padding: 32, borderRadius: 14, minHeight: 300, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10, marginTop: 20 }}>
-                    {Object.entries(result.architecture)
-                      .filter(([, v]) => v !== null)
-                      .map(([key, value]) => (
-                        <div key={key} style={{ padding: '16px 20px', borderRadius: 12, background: 'rgba(255,45,120,0.06)', border: '1px solid rgba(255,45,120,0.15)' }}>
-                          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: '#ff2d78', marginBottom: 4 }}>{key}</p>
-                          <p style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{value}</p>
-                        </div>
-                      ))}
+                    <button className="copy-btn" onClick={() => setActiveTab('readme')} style={{ borderColor: 'rgba(255,45,120,0.3)', color: '#ff2d78' }}>Next: README →</button>
                   </div>
                 </div>
-              )}
+                {diagramError ? (
+                  <div style={{ padding: 32, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+                    <p style={{ color: '#888', fontSize: 13, marginBottom: 12 }}>⚠ Diagram could not render. Copy the Mermaid syntax and paste it into <a href="https://mermaid.live" target="_blank" rel="noreferrer" style={{ color: '#ff2d78' }}>mermaid.live</a> to view it.</p>
+                    <pre style={{ textAlign: 'left', fontSize: 12, color: '#666', background: '#0d0d0d', padding: 16, borderRadius: 8, overflowX: 'auto' }}>
+                      {cleanMermaid(result.advancedDiagram ?? result.simpleDiagram)}
+                    </pre>
+                  </div>
+                ) : (
+                  <div ref={diagramCallbackRef} className="diagram-wrap"
+                    style={{ padding: 32, borderRadius: 14, minHeight: 300, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10, marginTop: 20 }}>
+                  {Object.entries(result.architecture).filter(([, v]) => v !== null).map(([key, value]) => (
+                    <div key={key} style={{ padding: '16px 20px', borderRadius: 12, background: 'rgba(255,45,120,0.06)', border: '1px solid rgba(255,45,120,0.15)' }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: '#ff2d78', marginBottom: 4 }}>{key}</p>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {/* README TAB */}
-              {activeTab === 'readme' && (
-                <div style={{ padding: 32 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <div style={{ display: activeTab === 'readme' ? 'block' : 'none', padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button className="copy-btn" onClick={() => setActiveTab('architecture')}>← Back</button>
                     <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Generated README.md</h2>
-                    {result.readme && <CopyBtn text={result.readme} label="Copy Markdown" />}
                   </div>
-
-                  {/* ✅ FIX: Show a clear message if README generation failed */}
-                  {!result.readme ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
-                      <p style={{ fontSize: 32, marginBottom: 12 }}>⚠️</p>
-                      <p style={{ fontSize: 15, fontWeight: 600, color: '#888' }}>README generation failed.</p>
-                      <p style={{ fontSize: 13, color: '#555', marginTop: 8 }}>This usually means the Groq API timed out or hit a rate limit. Try generating again.</p>
-                    </div>
-                  ) : (
-                    <ReadmeContent html={readmeHtml} />
-                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {result.readme && <CopyBtn text={result.readme} label="Copy Markdown" />}
+                    <button className="copy-btn" onClick={() => setActiveTab('contributors')} style={{ borderColor: 'rgba(255,45,120,0.3)', color: '#ff2d78' }}>Next: Contributors →</button>
+                  </div>
                 </div>
-              )}
+                {!result.readme ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
+                    <p style={{ fontSize: 32, marginBottom: 12 }}>⚠️</p>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: '#888' }}>README generation failed.</p>
+                    <p style={{ fontSize: 13, color: '#555', marginTop: 8 }}>This usually means the Groq API timed out or hit a rate limit. Try generating again.</p>
+                  </div>
+                ) : (
+                  <ReadmeContent html={readmeHtml} />
+                )}
+              </div>
 
               {/* FIND CONTRIBUTORS TAB */}
-              {activeTab === 'contributors' && (
-                <div style={{ padding: 32 }}>
-                  <div style={{ marginBottom: 28 }}>
-                    <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Potential Contributors</h2>
-                    <p style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>
-                      GitHub developers skilled in {Object.keys(result.languages).slice(0, 2).join(' & ')} who may want to contribute.
-                    </p>
+              <div style={{ display: activeTab === 'contributors' ? 'block' : 'none', padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button className="copy-btn" onClick={() => setActiveTab('readme')}>← Back</button>
+                    <div>
+                      <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 2 }}>Potential Contributors</h2>
+                      <p style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>GitHub developers skilled in {Object.keys(result.languages).slice(0, 2).join(' & ')} who may want to contribute.</p>
+                    </div>
                   </div>
-                  {result.potentialContributors.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
-                      <p style={{ fontSize: 32, marginBottom: 12 }}>🔍</p>
-                      <p style={{ fontSize: 15, fontWeight: 600 }}>No potential contributors found.</p>
-                      <p style={{ fontSize: 13, color: '#444', marginTop: 8 }}>GitHub rate limits may have prevented the search. Try adding a personal access token.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {result.potentialContributors.map((c, i) => (
-                        <motion.a key={c.username} href={c.profileUrl} target="_blank" rel="noreferrer"
-                          initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-                          whileHover={{ x: 4 }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderRadius: 14, textDecoration: 'none', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', transition: 'border-color .2s' }}
-                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,45,120,0.3)')}
-                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
-                          <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,45,120,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#ff2d78', flexShrink: 0 }}>#{i + 1}</span>
-                          <img src={c.avatarUrl} alt={c.username} style={{ width: 44, height: 44, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                              <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>@{c.username}</span>
-                              {c.location && <span style={{ fontSize: 11, color: '#666' }}>📍 {c.location}</span>}
-                            </div>
-                            <p style={{ fontSize: 12, color: '#888', fontWeight: 500 }}>{c.bio ?? 'No bio provided'}</p>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#aaa' }}>{c.publicRepos} repos</span>
-                            <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'rgba(255,45,120,0.08)', border: '1px solid rgba(255,45,120,0.2)', color: '#ff2d78' }}>{c.followers} followers</span>
-                          </div>
-                        </motion.a>
-                      ))}
-                    </div>
-                  )}
+                  <button className="copy-btn" onClick={() => setActiveTab('email')} style={{ borderColor: 'rgba(255,45,120,0.3)', color: '#ff2d78', flexShrink: 0 }}>Next: Email Drafts →</button>
                 </div>
-              )}
-
-              {/* EMAIL DRAFTS TAB */}
-              {activeTab === 'email' && (
-                <div style={{ padding: 32 }}>
-                  <div style={{ marginBottom: 28 }}>
-                    <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Personalized Outreach Emails</h2>
-                    <p style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>
-                      One AI-written email per contributor — click Preview to read, Copy to use.
-                    </p>
+                {result.potentialContributors.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
+                    <p style={{ fontSize: 32, marginBottom: 12 }}>🔍</p>
+                    <p style={{ fontSize: 15, fontWeight: 600 }}>No potential contributors found.</p>
+                    <p style={{ fontSize: 13, color: '#444', marginTop: 8 }}>GitHub rate limits may have prevented the search. Try adding a personal access token.</p>
                   </div>
-                  {result.contributorEmails.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
-                      <p style={{ fontSize: 32, marginBottom: 12 }}>📭</p>
-                      <p style={{ fontSize: 15, fontWeight: 600 }}>No emails generated.</p>
-                      <p style={{ fontSize: 13, color: '#444', marginTop: 8 }}>Emails are generated per contributor. Check the Find Contributors tab first.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {result.contributorEmails.map((email, i) => {
-                        const contributor = result.potentialContributors.find(c => c.username === email.username);
-                        const isExpanded = expandedEmail === email.username;
-                        return (
-                          <motion.div key={email.username}
-                            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
-                            style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
-                              {contributor && (
-                                <img src={contributor.avatarUrl} alt={email.username} style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
-                              )}
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 2 }}>@{email.username}</p>
-                                <p style={{ fontSize: 12, color: '#888', fontWeight: 600 }}>Subject: {email.subject}</p>
-                              </div>
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <CopyBtn text={`Subject: ${email.subject}\n\n${email.body}`} label="Copy Email" />
-                                <button className="copy-btn"
-                                  onClick={() => setExpandedEmail(isExpanded ? null : email.username)}
-                                  style={{ borderColor: isExpanded ? 'rgba(255,45,120,0.4)' : undefined, color: isExpanded ? '#ff2d78' : undefined }}>
-                                  {isExpanded ? 'Collapse ↑' : 'Preview ↓'}
-                                </button>
-                              </div>
-                            </div>
-                            <AnimatePresence>
-                              {isExpanded && (
-                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} style={{ overflow: 'hidden' }}>
-                                  <div style={{ padding: '20px 24px', background: 'rgba(255,255,255,0.02)' }}>
-                                    <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                      <span style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>Subject</span>
-                                      <p style={{ fontSize: 14, color: '#fff', fontWeight: 700, marginTop: 4 }}>{email.subject}</p>
-                                    </div>
-                                    <div style={{ padding: '18px 20px', borderRadius: 10, background: '#080808', border: '1px solid rgba(255,255,255,0.07)' }}>
-                                      <p style={{ fontSize: 14, color: '#ccc', lineHeight: 1.9, fontWeight: 400, whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif' }}>
-                                        {email.body}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* PUSH MODAL */}
-      <AnimatePresence>
-        {showPushModal && (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={(e) => { if (e.target === e.currentTarget && !pushing) setShowPushModal(false); }}>
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.25 }}
-              style={{ width: '100%', maxWidth: 520, borderRadius: 24, padding: 32, background: 'rgba(10,10,10,0.95)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)', border: '1px solid rgba(255,255,255,0.12)' }}>
-              {pushSuccess ? (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} style={{ textAlign: 'center', padding: '20px 0' }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-                  <h3 style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Successfully pushed!</h3>
-                  <p style={{ fontSize: 14, color: '#aaa', marginBottom: 24 }}>README.md and architecture.md pushed to <strong style={{ color: '#fff' }}>{result.repoFullName}</strong></p>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <a href={result.metadata.htmlUrl} target="_blank" rel="noreferrer" style={{ flex: 1, padding: '12px', borderRadius: 12, textAlign: 'center', background: '#fff', color: '#000', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>View on GitHub ↗</a>
-                    <button onClick={() => { setShowPushModal(false); setPushSuccess(false); setPushChoice(null); }} style={{ flex: 1, padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: 14, border: '1px solid rgba(255,255,255,0.1)' }}>Close</button>
-                  </div>
-                </motion.div>
-              ) : (
-                <>
-                  <h3 style={{ fontSize: 20, fontWeight: 900, color: '#fff', marginBottom: 6 }}>Push to {result.repoName}</h3>
-                  <p style={{ fontSize: 13, color: '#888', marginBottom: 24, fontWeight: 500 }}>
-                    Pushes <code style={{ color: '#ff2d78', background: 'rgba(255,45,120,0.1)', padding: '2px 6px', borderRadius: 4 }}>README.md</code> and <code style={{ color: '#ff2d78', background: 'rgba(255,45,120,0.1)', padding: '2px 6px', borderRadius: 4 }}>architecture.md</code> to your repo.
-                  </p>
-                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: '#666', marginBottom: 12 }}>Existing README?</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-                    {[
-                      { id: 'replace' as const, icon: '🔄', title: 'Replace README.md',               desc: 'Overwrites the current README.' },
-                      { id: 'new'     as const, icon: '✨', title: 'Create README-intentmesh.md', desc: 'Keeps your existing README. Adds new file alongside.' },
-                    ].map(opt => (
-                      <button key={opt.id} className={`choice-card ${pushChoice === opt.id ? 'selected' : ''}`} onClick={() => setPushChoice(opt.id)}>
-                        <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{opt.icon} {opt.title}</p>
-                        <p style={{ fontSize: 12, color: '#888', fontWeight: 500 }}>{opt.desc}</p>
-                      </button>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {result.potentialContributors.map((c, i) => (
+                      <motion.a key={c.username} href={c.profileUrl} target="_blank" rel="noreferrer"
+                        initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
+                        whileHover={{ x: 4 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderRadius: 14, textDecoration: 'none', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', transition: 'border-color .2s' }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,45,120,0.3)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
+                        <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,45,120,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#ff2d78', flexShrink: 0 }}>#{i + 1}</span>
+                        <img src={c.avatarUrl} alt={c.username} style={{ width: 44, height: 44, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>@{c.username}</span>
+                            {c.location && <span style={{ fontSize: 11, color: '#666' }}>📍 {c.location}</span>}
+                          </div>
+                          <p style={{ fontSize: 12, color: '#888', fontWeight: 500 }}>{c.bio ?? 'No bio provided'}</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                          <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#aaa' }}>{c.publicRepos} repos</span>
+                          <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'rgba(255,45,120,0.08)', border: '1px solid rgba(255,45,120,0.2)', color: '#ff2d78' }}>{c.followers} followers</span>
+                        </div>
+                      </motion.a>
                     ))}
                   </div>
-                  {pushError && <p style={{ fontSize: 13, color: '#ff8080', fontWeight: 600, marginBottom: 16 }}>⚠ {pushError}</p>}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => { setShowPushModal(false); setPushChoice(null); setPushError(''); }} style={{ flex: 1, padding: '13px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', color: '#aaa', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: 14, border: '1px solid rgba(255,255,255,0.1)' }}>Cancel</button>
-                    <button onClick={handlePush} disabled={!pushChoice || pushing}
-                      style={{ flex: 2, padding: '13px', borderRadius: 12, background: pushChoice ? '#fff' : 'rgba(255,255,255,0.1)', color: pushChoice ? '#000' : '#555', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: 14, border: '2px solid transparent', transition: 'all .25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                      onMouseEnter={e => { if (!pushChoice || pushing) return; const el = e.currentTarget as HTMLElement; el.style.background='#000'; el.style.color='#fff'; el.style.borderColor='#ff2d78'; }}
-                      onMouseLeave={e => { if (!pushChoice || pushing) return; const el = e.currentTarget as HTMLElement; el.style.background='#fff'; el.style.color='#000'; el.style.borderColor='transparent'; }}>
-                      {pushing ? <><div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Pushing…</> : 'Push to GitHub ↑'}
-                    </button>
+                )}
+              </div>
+
+              {/* EMAIL DRAFTS TAB */}
+              <div style={{ display: activeTab === 'email' ? 'block' : 'none', padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button className="copy-btn" onClick={() => setActiveTab('contributors')}>← Back</button>
+                    <div>
+                      <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 2 }}>Personalized Outreach Emails</h2>
+                      <p style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>One AI-written email per contributor — click Preview to read, Copy to use.</p>
+                    </div>
                   </div>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                  {result.readme && result.advancedDiagram && (
+                    <button className="copy-btn" onClick={() => setActiveTab('push')} style={{ borderColor: 'rgba(255,45,120,0.3)', color: '#ff2d78', flexShrink: 0 }}>Next: Push to Repo →</button>
+                  )}
+                </div>
+                {result.contributorEmails.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#555' }}>
+                    <p style={{ fontSize: 32, marginBottom: 12 }}>📭</p>
+                    <p style={{ fontSize: 15, fontWeight: 600 }}>No emails generated.</p>
+                    <p style={{ fontSize: 13, color: '#444', marginTop: 8 }}>Emails are generated per contributor. Check the Find Contributors tab first.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {result.contributorEmails.map((email, i) => {
+                      const contributor = result.potentialContributors.find(c => c.username === email.username);
+                      const isExpanded = expandedEmail === email.username;
+                      return (
+                        <motion.div key={email.username}
+                          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
+                          style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                            {contributor && (
+                              <img src={contributor.avatarUrl} alt={email.username} style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
+                            )}
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 2 }}>@{email.username}</p>
+                              <p style={{ fontSize: 12, color: '#888', fontWeight: 600 }}>Subject: {email.subject}</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <CopyBtn text={`Subject: ${email.subject}\n\n${email.body}`} label="Copy Email" />
+                              <button className="copy-btn"
+                                onClick={() => setExpandedEmail(isExpanded ? null : email.username)}
+                                style={{ borderColor: isExpanded ? 'rgba(255,45,120,0.4)' : undefined, color: isExpanded ? '#ff2d78' : undefined }}>
+                                {isExpanded ? 'Collapse ↑' : 'Preview ↓'}
+                              </button>
+                            </div>
+                          </div>
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} style={{ overflow: 'hidden' }}>
+                                <div style={{ padding: '20px 24px', background: 'rgba(255,255,255,0.02)' }}>
+                                  <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                    <span style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>Subject</span>
+                                    <p style={{ fontSize: 14, color: '#fff', fontWeight: 700, marginTop: 4 }}>{email.subject}</p>
+                                  </div>
+                                  <div style={{ padding: '18px 20px', borderRadius: 10, background: '#080808', border: '1px solid rgba(255,255,255,0.07)' }}>
+                                    <p style={{ fontSize: 14, color: '#ccc', lineHeight: 1.9, fontWeight: 400, whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif' }}>
+                                      {email.body}
+                                    </p>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* PUSH TO REPO TAB */}
+              <div style={{ display: activeTab === 'push' ? 'block' : 'none', padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+                  <button className="copy-btn" onClick={() => setActiveTab('email')}>← Back</button>
+                  <div>
+                    <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 2 }}>Push to Repository</h2>
+                    <p style={{ fontSize: 13, color: '#888', fontWeight: 500 }}>
+                      Push <code style={{ color: '#ff2d78', background: 'rgba(255,45,120,0.1)', padding: '2px 6px', borderRadius: 4 }}>README.md</code> with the architecture diagram embedded to <strong style={{ color: '#fff' }}>{result.repoFullName}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {pushSuccess ? (
+                  <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                    style={{ textAlign: 'center', padding: '48px 32px', borderRadius: 18, background: 'rgba(0,200,100,0.06)', border: '1px solid rgba(0,200,100,0.2)' }}>
+                    <div style={{ fontSize: 52, marginBottom: 16 }}>🎉</div>
+                    <h3 style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Successfully pushed!</h3>
+                    <p style={{ fontSize: 14, color: '#aaa', marginBottom: 28 }}>
+                      README pushed to <strong style={{ color: '#fff' }}>{result.repoFullName}</strong> with the architecture diagram embedded.
+                    </p>
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                      <a href={result.metadata.htmlUrl} target="_blank" rel="noreferrer"
+                        style={{ padding: '12px 24px', borderRadius: 12, background: '#fff', color: '#000', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
+                        View on GitHub ↗
+                      </a>
+                      <button onClick={() => { setPushSuccess(false); setPushChoice(null); }}
+                        style={{ padding: '12px 24px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: 14, border: '1px solid rgba(255,255,255,0.1)' }}>
+                        Push Again
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: '#666', marginBottom: 12 }}>Existing README?</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24, maxWidth: 560 }}>
+                      {[
+                        { id: 'replace' as const, icon: '🔄', title: 'Replace README.md',           desc: 'Overwrites the current README with the generated one.' },
+                        { id: 'new'     as const, icon: '✨', title: 'Create README-intentmesh.md', desc: 'Keeps your existing README and adds the new file alongside.' },
+                      ].map(opt => (
+                        <button key={opt.id} className={`choice-card ${pushChoice === opt.id ? 'selected' : ''}`} onClick={() => setPushChoice(opt.id)}>
+                          <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{opt.icon} {opt.title}</p>
+                          <p style={{ fontSize: 12, color: '#888', fontWeight: 500 }}>{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+
+                    {pushError && <p style={{ fontSize: 13, color: '#ff8080', fontWeight: 600, marginBottom: 16 }}>⚠ {pushError}</p>}
+
+                    <div style={{ display: 'flex', gap: 10, maxWidth: 560 }}>
+                      <button onClick={handlePush} disabled={!pushChoice || pushing}
+                        style={{ flex: 1, padding: '15px', borderRadius: 14, background: pushChoice && !pushing ? '#fff' : 'rgba(255,255,255,0.1)', color: pushChoice && !pushing ? '#000' : '#555', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: 15, border: '2px solid transparent', transition: 'all .25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                        onMouseEnter={e => { if (!pushChoice || pushing) return; const el = e.currentTarget as HTMLElement; el.style.background='#000'; el.style.color='#fff'; el.style.borderColor='#ff2d78'; }}
+                        onMouseLeave={e => { if (!pushChoice || pushing) return; const el = e.currentTarget as HTMLElement; el.style.background='#fff'; el.style.color='#000'; el.style.borderColor='transparent'; }}>
+                        {pushing
+                          ? <><div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: pushing ? '#fff' : '#000', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Pushing…</>
+                          : '↑ Push to GitHub'
+                        }
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 28, padding: '18px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: '#555', marginBottom: 12 }}>Files that will be pushed</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 14 }}>📄</span>
+                        <code style={{ fontSize: 13, color: '#ff2d78' }}>{pushChoice === 'new' ? 'README-intentmesh.md' : 'README.md'}</code>
+                        <span style={{ fontSize: 11, color: '#555' }}>— README with architecture diagram embedded inside</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+          </div>
+        </div>
+      </div>
     </>
   );
 }
