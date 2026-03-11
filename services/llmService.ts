@@ -76,6 +76,7 @@ export interface UserAnswers {
   limitations:   string;
   roadmap:       string;
   contributing:  boolean;
+  diagramType:   string;          // flowchart | block | tier | usecase | sequence | er
 }
 
 // ── README ─────────────────────────────────────────────────────────
@@ -259,6 +260,72 @@ Output raw Markdown only — no outer fences, no preamble.`;
 }
 
 // ── ARCHITECTURE DIAGRAM ──────────────────────────────────────────
+
+type DiagramType = 'flowchart' | 'block';
+
+const DIAGRAM_CONFIGS: Record<DiagramType, {
+  label: string;
+  firstLine: string;
+  syntaxRules: string;
+  structureGuide: string;
+}> = {
+  flowchart: {
+    label: 'Flowchart',
+    firstLine: 'flowchart TD',
+    syntaxRules: `MERMAID SYNTAX — follow exactly or the diagram will not render:
+- First line: flowchart TD
+- Node IDs: UPPERCASE letters and underscores only (e.g. API_SERVER, JOB_MATCH)
+- Node labels: always ["double quoted"] (e.g. API_SERVER["Express API"])
+- Arrow labels: always double-quoted (e.g. A -->|"HTTP POST"| B)
+- NEVER write |text|> — always use -->|"text"|
+- Subgraph format (exact):
+    subgraph SG_APP["Backend"]
+      API_SERVER["Express API"]
+    end
+- classDef lines: ONLY after all nodes and arrows, never inside subgraphs
+- class lines: ONLY at the very end, NO spaces after commas (e.g. class A,B,C myClass)
+- Each node ID must be unique across the whole diagram`,
+    structureGuide: `DIAGRAM STRUCTURE — use only what applies:
+  SG_CLIENT → browsers, mobile apps, CLI
+  SG_AUTH   → login, OAuth, JWT verification
+  SG_APP    → main backend, APIs, workers
+  SG_DATA   → databases, cache, queues
+  SG_INFRA  → hosting, monitoring, CI/CD
+
+FEATURE-FIRST RULES:
+1. Every key feature gets its own dedicated node (e.g. JOB_MATCH["Job Matching Engine"])
+2. Tech stack nodes SUPPORT the features — they are secondary
+3. Arrow labels describe the action or data flowing (e.g. "job listings", "auth token")
+4. Minimum 10 nodes total`,
+  },
+
+  block: {
+    label: 'Block Diagram',
+    firstLine: 'flowchart LR',
+    syntaxRules: `MERMAID SYNTAX — follow exactly or the diagram will not render:
+- First line: flowchart LR
+- Node IDs: UPPERCASE letters and underscores only
+- Node labels: always ["double quoted"]
+- Arrow labels: always double-quoted (e.g. A -->|"uses"| B)
+- NEVER write |text|> — always use -->|"text"|
+- Subgraph format (exact):
+    subgraph SG_FRONT["Frontend"]
+      BROWSER["Web Browser"]
+    end
+- classDef and class lines ONLY at the very end of the file
+- class lines: NO spaces after commas (e.g. class A,B myClass)`,
+    structureGuide: `DIAGRAM STRUCTURE — 3 to 4 feature-area blocks left to right.
+Each block is a subgraph. Each block has 2–4 nodes inside it.
+Connect blocks with labeled arrows showing data or action flow.
+
+FEATURE-FIRST RULES:
+1. Name each block after a FEATURE AREA (e.g. "Job Matching", "User Onboarding")
+2. Inside each block, place the components that power that feature
+3. Tech stack nodes live INSIDE the relevant feature block — not standalone
+4. Draw arrows to show how feature areas share data or trigger each other`,
+  },
+};
+
 export async function generateAdvancedDiagram(params: {
   repoName:     string;
   languages:    string[];
@@ -272,84 +339,49 @@ export async function generateAdvancedDiagram(params: {
   userAnswers?: UserAnswers;
 }): Promise<string> {
 
-  const techStack = params.userAnswers?.techStack
-    || params.languages.slice(0, 8).join(', ');
+  const rawType   = (params.userAnswers?.diagramType ?? 'flowchart') as DiagramType;
+  const diagType  = DIAGRAM_CONFIGS[rawType] ? rawType : 'flowchart';
+  const cfg       = DIAGRAM_CONFIGS[diagType];
+  const techStack = params.userAnswers?.techStack || params.languages.slice(0, 8).join(', ');
 
-  const system = `You generate Mermaid.js flowchart diagrams. Output ONLY raw Mermaid syntax. Nothing else — no explanation, no fences, no preamble.
+  // Feature list — the most important input for the diagram
+  const featureList = (params.userAnswers?.features as { name: string; description: string }[] | undefined)
+    ?.filter(f => f.name.trim())
+    .map(f => `  - ${f.name}: ${f.description}`)
+    .join('\n') ?? '';
 
-═══ STRICT SYNTAX RULES (any violation = broken diagram) ═══
+  const system = `You are a Mermaid.js expert. Your output goes directly into mermaid.render(). A single syntax error crashes everything.
 
-1. First line MUST be: flowchart TD
+Output ONLY raw Mermaid syntax. Zero markdown. Zero explanation. Zero fences.
 
-2. Subgraphs:
-   subgraph SG_CLIENT["Client Layer"]
-     NODEID["Label"]
-   end
+${cfg.syntaxRules}
 
-3. Arrows — EXACT format:
-   NODEID1 -->|"label text"| NODEID2
-   ✅ CORRECT:  WEB -->|"HTTPS"| APISERVER
-   ❌ WRONG:    WEB -->|text|> APISERVER     (never use >)
-   ❌ WRONG:    WEB --> APISERVER            (always quote label)
+${cfg.structureGuide}`;
 
-4. classDef — ONLY at the very bottom, NEVER inside subgraphs:
-   classDef client fill:#1a0814,stroke:#ff2d78,color:#fff
-   classDef service fill:#0a0d1a,stroke:#4d9eff,color:#fff
-   classDef data fill:#0a1a0a,stroke:#00cc66,color:#fff
-   classDef auth fill:#0a1a18,stroke:#00d4aa,color:#fff
-   classDef infra fill:#1a1a0a,stroke:#ffaa00,color:#fff
+  const user = `Generate a ${cfg.label} diagram for: ${params.repoName}
 
-5. class lines — ONLY at bottom, NO spaces after commas:
-   class WEB,MOBILE client
-   class APISERVER,WORKER service
+KEY FEATURES — highest priority, each must appear as a named node:
+${featureList || '(none provided — infer from project name, type, and tech stack)'}
 
-6. Node IDs: UPPERCASE_ONLY, no spaces, no special chars (use _ for spaces)
-7. Node labels: ALWAYS in double-quoted brackets: ["Label Here"]
-8. Every subgraph must have a unique ID (SG_CLIENT, SG_AUTH, SG_APP, SG_DATA, SG_INFRA)
-
-═══ REQUIRED STRUCTURE ═══
-Use these 5 subgraphs (skip any that have no tech for them):
-  SG_CLIENT  → user-facing (browser, mobile app, CLI)
-  SG_AUTH    → authentication/authorization layer
-  SG_APP     → backend services, APIs, workers
-  SG_DATA    → databases, cache, queues
-  SG_INFRA   → deployment, monitoring, CI/CD, storage
-
-Minimum 12 nodes. Use REAL technology names from the provided stack.
-Connect every subgraph to at least one other with labeled arrows.`;
-
-  const user = `Generate a detailed architecture diagram for: ${params.repoName}
-
-TECH STACK (use these exact names as node labels):
-${techStack}
+TECH STACK — use to support the features above:
+${techStack || params.languages.join(', ')}
 
 DETECTED LAYERS:
-Frontend:   ${params.architecture.frontend  ?? 'Unknown — infer from stack'}
-Backend:    ${params.architecture.backend   ?? 'Unknown — infer from stack'}
-Database:   ${params.architecture.database  ?? 'Unknown — infer from stack'}
-Auth:       ${params.architecture.auth      ?? 'Not detected'}
-Caching:    ${params.architecture.caching   ?? 'Not detected'}
-Messaging:  ${params.architecture.messaging ?? 'Not detected'}
-Storage:    ${params.architecture.storage   ?? 'Not detected'}
-DevOps:     ${params.architecture.devops    ?? 'Not detected'}
-Testing:    ${params.architecture.testing   ?? 'Not detected'}
+Frontend:   ${params.architecture.frontend   ?? 'Not detected'}
+Backend:    ${params.architecture.backend    ?? 'Not detected'}
+Database:   ${params.architecture.database   ?? 'Not detected'}
+Auth:       ${params.architecture.auth       ?? 'Not detected'}
+Caching:    ${params.architecture.caching    ?? 'Not detected'}
+Messaging:  ${params.architecture.messaging  ?? 'Not detected'}
+Storage:    ${params.architecture.storage    ?? 'Not detected'}
+DevOps:     ${params.architecture.devops     ?? 'Not detected'}
 Monitoring: ${params.architecture.monitoring ?? 'Not detected'}
 Deployment: ${params.userAnswers?.deployment ?? 'Not specified'}
-
-GitHub Languages: ${params.languages.join(', ')}
-Topics: ${params.topics.join(', ')}
 Project Type: ${params.userAnswers?.projectType ?? 'Web Application'}
 
-REQUIREMENTS:
-- 5 subgraphs (skip if no tech for that layer)
-- 12-18 nodes using REAL tech names from the stack above
-- Labeled arrows between ALL layers showing data/request flow
-- classDef color coding at bottom only
-- class assignments at very bottom only
+Output ONLY the Mermaid diagram. No fences. No explanation. First line must be exactly: ${cfg.firstLine}`;
 
-Output ONLY the Mermaid flowchart. No fences. No explanation. Start with: flowchart TD`;
-
-  return callLLM(system, user, 2048, 0.3); // low temp for consistent syntax
+  return callLLM(system, user, 2048, 0.2); // low temp = consistent syntax
 }
 
 // ── CONTRIBUTOR OUTREACH ──────────────────────────────────────────

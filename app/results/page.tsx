@@ -75,22 +75,26 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ];
 
 // ── Clean Mermaid ─────────────────────────────────────────────────
-// ✅ FIX: Added null guard — previously raw could be null/undefined
-//   → raw.replace(...) threw TypeError → React rendered blank page silently
 function cleanMermaid(raw: string | null | undefined): string {
   if (!raw || typeof raw !== 'string') {
-    // Return a minimal valid diagram so mermaid never crashes
     return 'flowchart TD\n  APP["Application"]\n  DB["Database"]\n  APP -->|"Query"| DB';
   }
-  return raw
+
+  let s = raw
+    // strip markdown fences
     .replace(/^```[\w]*\n?/gm, '')
     .replace(/```$/gm, '')
-    .replace(/\|([^|]*)\|>/g, '|$1|')
-    .replace(/\s+classDef\s+\w+[^\n]*/g, '')
-    .replace(/\s+class\s+\w+\s*$/gm, '')
-    .replace(/^(\s*class\s+)([^\n]+)$/gm,
-      (_, prefix, names) => prefix + names.split(',').map((n: string) => n.trim()).join(','))
     .trim();
+
+  // Fix broken arrow syntax: |text|> → |"text"|
+  s = s.replace(/\|([^|"]+)\|>/g, '|"$1"|');
+  // Fix unquoted arrow labels: -->|word| → -->|"word"|
+  s = s.replace(/-->\|([^"|][^|]*)\|/g, '-->|"$1"|');
+  // Fix class lines with spaces after commas (mermaid is picky)
+  s = s.replace(/^(\s*class\s+)([^\n]+)$/gm,
+    (_, prefix, names) => prefix + names.split(',').map((n: string) => n.trim()).join(','));
+
+  return s;
 }
 
 // ── Copy button ───────────────────────────────────────────────────
@@ -191,7 +195,14 @@ export default function ResultsPage() {
     setDiagramRendered(false);
     node.innerHTML = '<p style="color:#666;font-size:13px">Rendering diagram…</p>';
 
-    const diagram = cleanMermaid(res.advancedDiagram ?? res.simpleDiagram);
+    const raw     = cleanMermaid(res.advancedDiagram ?? res.simpleDiagram);
+    const simple  = cleanMermaid(res.simpleDiagram);
+
+    // Strip classDef/class lines — safest fallback
+    const stripStyle = (d: string) => d
+      .replace(/^\s*classDef\s+.*$/gm, '')
+      .replace(/^\s*class\s+.*$/gm, '')
+      .trim();
 
     import('mermaid').then(({ default: mermaid }) => {
       mermaid.initialize({
@@ -206,20 +217,25 @@ export default function ResultsPage() {
         },
       });
 
-      const renderId = `mermaid-${Date.now()}`;
-      mermaid.render(renderId, diagram)
-        .then(({ svg }) => {
-          node.innerHTML = svg;
-          setDiagramRendered(true);
-        })
-        .catch(() => {
-          const fallbackId = `mermaid-fb-${Date.now()}`;
-          mermaid.render(fallbackId, cleanMermaid(res.simpleDiagram))
-            .then(({ svg }) => { node.innerHTML = svg; setDiagramRendered(true); })
-            .catch(() => { setDiagramError(true); setDiagramRendered(true); });
-        });
+      const tryRender = (diagram: string, id: string): Promise<string> =>
+        mermaid.render(id, diagram).then(({ svg }) => svg);
+
+      // Attempt 1: full diagram as-is
+      tryRender(raw, `mermaid-${Date.now()}`)
+        .then(svg => { node.innerHTML = svg; setDiagramRendered(true); })
+        .catch(() =>
+          // Attempt 2: strip classDef/class lines (most common cause of syntax errors)
+          tryRender(stripStyle(raw), `mermaid-ns-${Date.now()}`)
+            .then(svg => { node.innerHTML = svg; setDiagramRendered(true); })
+            .catch(() =>
+              // Attempt 3: rule-based simple diagram without styles
+              tryRender(stripStyle(simple), `mermaid-fb-${Date.now()}`)
+                .then(svg => { node.innerHTML = svg; setDiagramRendered(true); })
+                .catch(() => { setDiagramError(true); setDiagramRendered(true); })
+            )
+        );
     }).catch(() => { setDiagramError(true); setDiagramRendered(true); });
-  }, []); // stable — reads result via resultRef
+  }, []);
 
   // Callback ref: fires every time the architecture tab div mounts in the DOM
   // This bypasses AnimatePresence timing — no more null ref on first render

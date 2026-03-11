@@ -366,12 +366,13 @@ export default function QuestionsPage() {
   const [autoFillError, setAutoFillError] = useState(false);
 
   // Step 4
-  const [demoUrl,     setDemoUrl]     = useState('');
-  const [deployment,  setDeployment]  = useState('');
-  const [license,     setLicense]     = useState('');
-  const [limitations, setLimitations] = useState('');
-  const [roadmap,     setRoadmap]     = useState('');
-  const [contributing, setContrib]    = useState<boolean | null>(null);
+  const [demoUrl,      setDemoUrl]      = useState('');
+  const [deployment,   setDeployment]   = useState('');
+  const [license,      setLicense]      = useState('');
+  const [limitations,  setLimitations]  = useState('');
+  const [roadmap,      setRoadmap]      = useState('');
+  const [contributing, setContrib]      = useState<boolean | null>(null);
+  const [diagramType,  setDiagramType]  = useState('flowchart');
 
   // Global
   const [loading,     setLoading]     = useState(false);
@@ -495,6 +496,7 @@ export default function QuestionsPage() {
         envVars:      showEnvVars ? envVars.filter(e => e.name.trim()) : [],
         usageExample, demoUrl, deployment, license, status,
         limitations, roadmap, contributing: contributing === true,
+        diagramType,
       };
 
       // ✅ FIX: accessToken stays in the body — this matches what the route reads.
@@ -804,6 +806,35 @@ export default function QuestionsPage() {
                   <div style={{ padding: '14px 20px', borderRadius: 14, marginBottom: 14, background: 'rgba(255,45,120,0.06)', border: '1px solid rgba(255,45,120,0.15)' }}>
                     <p style={{ fontSize: 13, color: '#aaa', fontWeight: 600, lineHeight: 1.6 }}>🏁 Almost done — <strong style={{ color: '#ff2d78' }}>deployment, license, and contributing</strong> are required.</p>
                   </div>
+
+                  {/* ── Diagram Type ── */}
+                  <Card>
+                    <Label required hint="Choose how you want your architecture visualised — Groq will generate the Mermaid code accordingly.">
+                      Architecture Diagram Style
+                    </Label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {[
+                        { id: 'flowchart', icon: '🔀', title: 'Flowchart',    desc: 'Request & data flow between components — best for web apps and APIs' },
+                        { id: 'block',     icon: '🧱', title: 'Block Diagram', desc: 'Feature areas as high-level blocks with components inside each one' },
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setDiagramType(opt.id)}
+                          style={{
+                            padding: '14px 16px', borderRadius: 14, textAlign: 'left', border: `2px solid ${diagramType === opt.id ? '#ff2d78' : 'rgba(255,255,255,0.08)'}`,
+                            background: diagramType === opt.id ? 'rgba(255,45,120,0.1)' : 'rgba(255,255,255,0.03)',
+                            transition: 'all .2s',
+                          }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                            <span style={{ fontSize: 18 }}>{opt.icon}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: diagramType === opt.id ? '#ff2d78' : '#fff' }}>{opt.title}</span>
+                          </div>
+                          <p style={{ fontSize: 11, color: '#666', fontWeight: 500, lineHeight: 1.4 }}>{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </Card>
                   <Card>
                     <Label required hint="Used in the deployment section and architecture diagram.">Deployment Platform</Label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
