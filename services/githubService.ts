@@ -1,6 +1,9 @@
 // ── Core fetch helper ──────────────────────────────────────────────
 async function githubFetch(endpoint: string, userToken?: string): Promise<unknown> {
-  const token = userToken || process.env.GITHUB_TOKEN;
+  const token =
+  userToken && userToken.startsWith('ghp_')
+    ? userToken
+    : process.env.GITHUB_TOKEN;
 
   // Abort after 10 s — GitHub API should respond fast
   const controller = new AbortController();
