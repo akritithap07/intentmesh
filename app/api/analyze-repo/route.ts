@@ -233,7 +233,10 @@ export async function POST(request: NextRequest) {
         languages: analysis.languages,
         existingContributors: analysis.existingContributors,
         potentialContributors,
-        contributorEmails: outreachResult.status === 'fulfilled' ? outreachResult.value?.emails ?? [] : [],
+        contributorEmails:
+  outreachResult.status === 'fulfilled'
+    ? outreachResult.value ?? []
+    : [],
         architecture,
         simpleDiagram,
         advancedDiagram: diagramResult.status === 'fulfilled' ? diagramResult.value : simpleDiagram,

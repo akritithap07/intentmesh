@@ -396,8 +396,8 @@ export async function generateContributorOutreach(params: {
     publicRepos: number; followers: number; location: string | null;
   }[];
   userAnswers?: UserAnswers;
-}): Promise<{ emails: { username: string; subject: string; body: string }[] }> {
-  if (params.potentialContributors.length === 0) return { emails: [] };
+}): Promise<{ username: string; subject: string; body: string }[]> {
+  if (params.potentialContributors.length === 0) return [];
 
   const projectDesc = params.userAnswers?.tagline || params.description || params.repoName;
   const stack = params.userAnswers?.techStack || params.languages.join(', ');
@@ -434,9 +434,9 @@ Return ONLY the JSON array: [{"username":"...","subject":"...","body":"..."}]`;
   try {
     const cleaned = raw.replace(/```json|```/g, '').trim();
     const parsed  = JSON.parse(cleaned);
-    return { emails: Array.isArray(parsed) ? parsed : [] };
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     console.error('[llmService] Failed to parse contributor outreach JSON. Raw output:', raw.slice(0, 200));
-    return { emails: [] };
+    return [];
   }
 }

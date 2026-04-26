@@ -3,7 +3,10 @@ import { ArchitectureModel } from './architectureEngine';
 // Generates a clean, valid Mermaid flowchart as a fallback when LLM fails.
 // Uses the full 10-layer ArchitectureModel so every detected tech appears.
 export function generateMermaidDiagram(arch: ArchitectureModel): string {
-  const lines: string[] = ['flowchart TD'];
+  const lines: string[] = [
+  '%%{init: {"theme":"dark"}}%%',
+  'flowchart TD'
+];
 
   // ── Helper: safe node ID ──────────────────────────────────────────
   const id = (label: string) =>
