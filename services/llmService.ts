@@ -179,7 +179,8 @@ FORMATTING RULES (never violate these):
 - Shell commands ALWAYS in \`\`\`bash blocks — never inline
 - Config variables ALWAYS in a table — never a bullet list
 - Section headers: use the exact emojis listed above
-- Minimum 500 lines of content
+- Generate a detailed professional README.
+- Target roughly 100–250 lines when appropriate.
 - Don't pad with filler — every sentence must be informative
 - Use real technology names from the provided stack — never say "your database" or "the framework"`;
 
@@ -212,22 +213,20 @@ KEY FEATURES (use ALL of these)
 ${featureBlock || params.topics.map(t => `- ${t}`).join('\n') || 'No features specified — infer from tech stack'}
 
 ═══════════════════════════════════════════
-TECH STACK
+TECH STACK & SYSTEM DESIGN
 ═══════════════════════════════════════════
-User-specified:   ${ua?.techStack || 'Not specified'}
-GitHub languages: ${params.languages.join(', ')}
-Topics:           ${params.topics.join(', ')}
-Frontend:         ${params.architecture.frontend ?? 'None detected'}
-Backend:          ${params.architecture.backend  ?? 'None detected'}
-Database:         ${params.architecture.database ?? 'None detected'}
-Auth:             ${params.architecture.auth     ?? 'None detected'}
-Caching:          ${params.architecture.caching  ?? 'None detected'}
-Messaging:        ${params.architecture.messaging ?? 'None detected'}
-Storage:          ${params.architecture.storage  ?? 'None detected'}
-DevOps:           ${params.architecture.devops   ?? 'None detected'}
-Testing:          ${params.architecture.testing  ?? 'None detected'}
-Monitoring:       ${params.architecture.monitoring ?? 'None detected'}
-Deployment:       ${ua?.deployment || 'Not specified'}
+User-defined Tech Stack: ${ua?.techStack ? ua.techStack : 'Not provided'}
+
+Deployment: ${ua?.deployment ? ua.deployment : 'Not specified'}
+
+IMPORTANT:
+- Infer the system architecture (frontend, backend, database, etc.) ONLY from:
+  - User-defined tech stack
+  - Features
+  - Project description
+
+- Do NOT assume technologies that are not mentioned
+- Clearly explain each layer and its role
 
 ═══════════════════════════════════════════
 SETUP
@@ -256,7 +255,7 @@ Top contributors: ${params.contributors.slice(0, 3).map(c => c.username).join(',
 Now write the complete, professional README. Every section must be detailed and specific.
 Output raw Markdown only — no outer fences, no preamble.`;
 
-  return callLLM(system, user, 8192, 0.7);
+  return callLLM(system, user, 4096, 0.7);
 }
 
 // ── ARCHITECTURE DIAGRAM ──────────────────────────────────────────
@@ -361,6 +360,7 @@ ${cfg.structureGuide}`;
   const user = `Generate a ${cfg.label} diagram for: ${params.repoName}
 
 KEY FEATURES — highest priority, each must appear as a named node:
+use only black color for nodes
 ${featureList || '(none provided — infer from project name, type, and tech stack)'}
 
 TECH STACK — use to support the features above:
