@@ -1,4 +1,24 @@
-import { Client } from '@upstash/qstash';
+import { Client, Receiver } from '@upstash/qstash';
+
+export async function verifyQStashSignature(
+  signature: string | null,
+  body: string
+): Promise<boolean> {
+  const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+
+  if (!signature || !currentSigningKey || !nextSigningKey) {
+    return false;
+  }
+
+  const receiver = new Receiver({ currentSigningKey, nextSigningKey });
+
+  try {
+    return await receiver.verify({ signature, body });
+  } catch {
+    return false;
+  }
+}
 
 export async function publishAnalysisJob(payload: { analysisId: string; repoId: string }) {
   const token = process.env.QSTASH_TOKEN;

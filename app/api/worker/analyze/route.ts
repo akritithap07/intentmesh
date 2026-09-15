@@ -4,6 +4,7 @@ import { fetchRepoContents } from '@/lib/github-ingest';
 import { analyzeCodebaseWithTsMorph } from '@/lib/analysis/ts-morph-analyzer';
 import { generateMermaidDiagram } from '@/lib/analysis/mermaid-generator';
 import { indexRepositoryChunks } from '@/lib/retrieval';
+import { verifyQStashSignature } from '@/lib/qstash';
 import { z } from 'zod';
 
 const workerPayloadSchema = z.object({
@@ -13,7 +14,22 @@ const workerPayloadSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const signature = req.headers.get('upstash-signature');
+
+    const isValidSignature = await verifyQStashSignature(signature, rawBody);
+    if (!isValidSignature) {
+      console.warn('[Worker] Rejected request with missing or invalid QStash signature');
+      return NextResponse.json({ error: 'Invalid or missing QStash signature' }, { status: 401 });
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400 });
+    }
+
     const parsed = workerPayloadSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -60,7 +76,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid repository name' }, { status: 400 });
     }
 
-    const accessToken = process.env.GITHUB_TOKEN || process.env.GITHUB_CLIENT_SECRET || '';
+    const accessToken = process.env.GITHUB_TOKEN;
+    if (!accessToken) {
+      await updateAnalysis(analysisId, {
+        status: 'failed',
+        error_message: 'Server GitHub access token (GITHUB_TOKEN) is not configured.',
+      });
+      return NextResponse.json({ error: 'GitHub access token not configured' }, { status: 500 });
+    }
 
     let commitSha = 'main';
     let files: Array<{ path: string; content: string }> = [];

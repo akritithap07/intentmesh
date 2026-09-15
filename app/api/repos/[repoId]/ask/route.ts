@@ -56,7 +56,7 @@ export async function POST(
     }
 
     // 4. Run bounded agentic tool loop
-    const result = await runAgenticQnA(repo.id, question);
+    const result = await runAgenticQnA(repo.id, question, session.accessToken);
 
     return NextResponse.json(
       {

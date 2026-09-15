@@ -12,8 +12,18 @@ export async function POST(req: Request) {
 
     const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
 
-    // 1. HMAC SHA-256 Signature Verification
-    if (webhookSecret && signature) {
+    // 1. HMAC SHA-256 Signature Verification (fail closed)
+    if (!webhookSecret) {
+      console.error('[Webhook] GITHUB_WEBHOOK_SECRET is not configured; rejecting webhook.');
+      return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+    }
+
+    if (!signature) {
+      console.warn('[Webhook] Missing signature header; rejecting webhook.');
+      return NextResponse.json({ error: 'Missing webhook signature' }, { status: 401 });
+    }
+
+    {
       const hmac = crypto.createHmac('sha256', webhookSecret);
       const computedSignature = 'sha256=' + hmac.update(rawBody).digest('hex');
 

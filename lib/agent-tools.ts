@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getLatestCompletedAnalysis, getRecentSyncJobs } from '@/lib/db-service';
+import { getLatestCompletedAnalysis, getRecentSyncJobs, getRepoById } from '@/lib/db-service';
 import { retrieveRelevantChunks } from '@/lib/retrieval';
 import { fetchRepoContents } from '@/lib/github-ingest';
 
@@ -72,14 +72,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 export async function executeTool(
   repoId: string,
   toolName: string,
-  args: unknown
+  args: unknown,
+  accessToken: string
 ): Promise<string> {
   const analysis = await getLatestCompletedAnalysis(repoId);
   if (!analysis) {
     return JSON.stringify({ error: 'No completed analysis available for this repository.' });
   }
-
-  const accessToken = process.env.GITHUB_TOKEN || process.env.GITHUB_CLIENT_SECRET || '';
 
   try {
     switch (toolName) {
@@ -111,16 +110,23 @@ export async function executeTool(
           return JSON.stringify({ error: `File '${normalized}' not found in analyzed codebase.` });
         }
 
-        const [owner, repoName] = (analysis.repo_id ? 'user/repo' : '').split('/');
+        const repoRecord = await getRepoById(repoId);
+        const [owner, repoName] = repoRecord ? repoRecord.full_name.split('/') : [];
         let fileContent = '';
 
-        if (owner && repoName) {
+        if (owner && repoName && accessToken) {
           try {
-            const fetched = await fetchRepoContents(accessToken, owner, repoName, 'main');
+            const fetched = await fetchRepoContents(
+              accessToken,
+              owner,
+              repoName,
+              repoRecord!.default_branch
+            );
             const targetFile = fetched.files.find((f) => f.path === normalized);
             if (targetFile) fileContent = targetFile.content;
-          } catch {
-            // fallback
+          } catch (fetchErr) {
+            console.error('[agent-tools:read_file] GitHub fetch failed:', fetchErr);
+            // fall through to analysis-derived preview below
           }
         }
 

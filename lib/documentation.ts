@@ -4,7 +4,6 @@ import { db } from '@/lib/db';
 import { documentationVersions, DocumentationVersion } from '@/db/schema';
 import { getAnalysisById, getRepoById } from '@/lib/db-service';
 import { verifyDocumentation } from '@/lib/verification/documentation-verifier';
-import { eq } from 'drizzle-orm';
 
 export async function generateVerifiedDocumentation(
   repoId: string,
@@ -126,13 +125,4 @@ ${modules.slice(0, 15).map((m) => `- \`${m.path}\``).join('\n')}
     .returning();
 
   return docVersion;
-}
-
-export async function getLatestDocVersion(repoId: string): Promise<DocumentationVersion | null> {
-  const res = await db
-    .select()
-    .from(documentationVersions)
-    .where(eq(documentationVersions.repo_id, repoId))
-    .limit(1);
-  return res[0] ?? null;
 }
